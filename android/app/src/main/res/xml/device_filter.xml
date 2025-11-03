@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- TSL Readers USB Vendor ID -->
+    <usb-device vendor-id="10136" />
+</resources>
