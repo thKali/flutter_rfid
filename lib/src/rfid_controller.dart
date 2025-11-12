@@ -154,7 +154,29 @@ class RfidController extends ChangeNotifier {
   Future<void> connect() async {
     _status.value = RfidControllerConnecting();
     try {
-      await platform.invokeMethod('connect');
+      final result = await platform.invokeMethod('connect');
+      
+      if (result is Map) {
+        final ignoredDevices = result['ignoredDevices'] as List?;
+        if (ignoredDevices != null && ignoredDevices.isNotEmpty) {
+          debugPrint('Dispositivos Bluetooth ignorados: ${ignoredDevices.join(", ")}');
+        }
+      }
+    } on PlatformException catch (e) {
+      String errorMessage = e.message ?? 'Erro ao conectar';
+      
+      if (e.details is Map) {
+        final details = e.details as Map;
+        final ignoredDevices = details['ignoredDevices'] as List?;
+        
+        if (ignoredDevices != null && ignoredDevices.isNotEmpty) {
+          debugPrint('Detalhes: ${ignoredDevices.length} dispositivo(s) ignorado(s)');
+        }
+      }
+      
+      debugPrint('Erro ao conectar: $e');
+      _status.value = RfidControllerError(message: errorMessage);
+      rethrow;
     } catch (e) {
       debugPrint('Erro ao conectar: $e');
       _status.value = RfidControllerError(message: e.toString());

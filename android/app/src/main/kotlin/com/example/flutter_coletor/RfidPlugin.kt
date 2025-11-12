@@ -176,13 +176,49 @@ class RfidPlugin(private val context: Context) : MethodCallHandler {
         }
         
         ReaderManager.sharedInstance().updateList()
+        
+        val readerList = ReaderManager.sharedInstance().readerList
+        val ignoredDevices = mutableListOf<String>()
+        val rfidDevices = mutableListOf<String>()
+        
+        for (reader in readerList.list()) {
+            val deviceName = reader.displayName ?: "Desconhecido"
+            if (isRfidReader(reader)) {
+                rfidDevices.add(deviceName)
+            } else {
+                ignoredDevices.add(deviceName)
+            }
+        }
+        
         autoSelectReader(true)
         
         if (mReader != null) {
             checkAndNotifyConnectionState()
-            result.success(true)
+            result.success(mapOf(
+                "connected" to true,
+                "readerName" to (mReader?.displayName ?: "Desconhecido"),
+                "ignoredDevices" to ignoredDevices,
+                "rfidDevices" to rfidDevices
+            ))
         } else {
-            result.error("NO_READER", "Nenhum leitor encontrado", null)
+            val errorMessage = if (ignoredDevices.isNotEmpty()) {
+                "Nenhum leitor RFID encontrado.\n\n" +
+                "Dispositivos Bluetooth ignorados:\n${ignoredDevices.joinToString("\n") { "• $it" }}\n\n" +
+                "Certifique-se de que o leitor RFID está pareado e ligado."
+            } else {
+                "Nenhum leitor RFID encontrado.\n\n" +
+                "Nenhum dispositivo Bluetooth pareado foi encontrado.\n" +
+                "Vá em Configurações > Bluetooth e pareie o leitor RFID."
+            }
+            
+            result.error(
+                "NO_READER", 
+                errorMessage,
+                mapOf(
+                    "ignoredDevices" to ignoredDevices,
+                    "totalDevices" to readerList.list().size
+                )
+            )
         }
     }
 
@@ -326,30 +362,81 @@ class RfidPlugin(private val context: Context) : MethodCallHandler {
         result.success(true)
     }
 
+    private fun isRfidReader(reader: Reader): Boolean {
+        val displayName = reader.displayName?.uppercase() ?: ""
+        
+        val knownRfidIdentifiers = listOf(
+            "TSL",      // TSL readers
+            "1128",     // TSL 1128 (ex: "011420-br-1128")
+            "1153",     // TSL 1153
+            "1166",     // TSL 1166
+            "2128",     // TSL 2128
+            "2166",     // TSL 2166
+            "ACURA",    // ACURA readers
+            "BTL",      // ACURA BTL series
+            "RFID",     // Generic RFID
+            "UHF",      // UHF RFID readers
+            "-BR-",     // Brazilian RFID readers (ex: "011420-br-1128")
+            "-US-",     // US RFID readers
+            "-UK-"      // UK RFID readers
+        )
+        
+        for (identifier in knownRfidIdentifiers) {
+            if (displayName.contains(identifier)) {
+                Log.d(TAG, "Found RFID reader by name: $displayName (matched: $identifier)")
+                return true
+            }
+        }
+        
+        // Padrão adicional: números-país-modelo (ex: "011420-br-1128")
+        // Formato: XXXXXX-CC-NNNN onde X=números, CC=país, N=modelo
+        val rfidPattern = Regex("""\d{5,7}-[A-Z]{2}-\d{4}""")
+        if (rfidPattern.containsMatchIn(displayName)) {
+            Log.d(TAG, "Found RFID reader by pattern: $displayName")
+            return true
+        }
+        
+        Log.d(TAG, "Skipping non-RFID device: $displayName")
+        return false
+    }
+    
     private fun autoSelectReader(attemptReconnect: Boolean) {
         val readerList: ObservableReaderList = ReaderManager.sharedInstance().readerList
         var selectedReader: Reader? = null
         
         if (readerList.list().size >= 1) {
             // Priority: USB > Bluetooth > Others
+            
             for (reader in readerList.list()) {
-                if (reader.hasTransportOfType(TransportType.USB)) {
+                if (reader.hasTransportOfType(TransportType.USB) && isRfidReader(reader)) {
                     selectedReader = reader
+                    Log.i(TAG, "Selected USB RFID reader: ${reader.displayName}")
                     break
                 }
             }
             
             if (selectedReader == null) {
                 for (reader in readerList.list()) {
-                    if (reader.hasTransportOfType(TransportType.BLUETOOTH)) {
+                    if (reader.hasTransportOfType(TransportType.BLUETOOTH) && isRfidReader(reader)) {
                         selectedReader = reader
+                        Log.i(TAG, "Selected Bluetooth RFID reader: ${reader.displayName}")
                         break
                     }
                 }
             }
             
+            // Only fallback to first device if it's an RFID reader
             if (selectedReader == null && readerList.list().isNotEmpty()) {
-                selectedReader = readerList.list()[0]
+                val firstReader = readerList.list()[0]
+                if (isRfidReader(firstReader)) {
+                    selectedReader = firstReader
+                    Log.i(TAG, "Selected first RFID reader: ${firstReader.displayName}")
+                } else {
+                    Log.w(TAG, "No RFID readers found in reader list. Available devices:")
+                    for (reader in readerList.list()) {
+                        Log.w(TAG, "  - ${reader.displayName}")
+                    }
+                }
             }
         }
 

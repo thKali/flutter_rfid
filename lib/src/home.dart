@@ -44,14 +44,49 @@ class _RfidHomePageState extends State<RfidHomePage> {
               children: [
                 ElevatedButton(
                   onPressed: () async {
-                    await _controller.connect();
+                    try {
+                      await _controller.connect();
+                    } catch (e) {
+                      // Erro já foi tratado no controller
+                    }
                   },
                   child: const Text('Conectar coletor'),
                 ),
               ],
             ),
           ),
-          RfidControllerError() => const Center(child: Text('Erro')),
+          RfidControllerError() => Center(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.error_outline,
+                    size: 64,
+                    color: Colors.red,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    status.message,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                  const SizedBox(height: 24),
+                  ElevatedButton(
+                    onPressed: () async {
+                      try {
+                        await _controller.connect();
+                      } catch (e) {
+                        // Erro já foi tratado no controller
+                      }
+                    },
+                    child: const Text('Tentar novamente'),
+                  ),
+                ],
+              ),
+            ),
+          ),
           RfidControllerConnected() => Center(
             child: Column(
               children: [
